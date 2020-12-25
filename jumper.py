@@ -35,7 +35,7 @@ class Camera:
     def apply(self, group):
         for sprite in group:
             if sprite != self.target:
-                sprite.rect.x = self.x + self.sd
+                sprite.rect.x = sprite.start_pos[0] + self.x + self.sd
 
     def set_target(self, target, limit):
         self.target = target
@@ -92,12 +92,13 @@ class Entity(pygame.sprite.Sprite):
 
 
 class Platform(pygame.sprite.Sprite):
-    def __init__(self, pos):
+    def __init__(self, pos, width):
         super().__init__(platforms_group, all_sprites)
-        self.image = pygame.Surface((1500, 10))
-        pygame.draw.rect(self.image, "gray", (0, 0, 1500, 10))
+        self.image = pygame.Surface((width, 10))
+        pygame.draw.rect(self.image, "gray", (0, 0, width, 10))
         self.rect = self.image.get_rect()
         self.rect.topleft = pos
+        self.start_pos = pos
 
 
 all_sprites = pygame.sprite.Group()
@@ -107,7 +108,9 @@ platforms_group = pygame.sprite.Group()
 player_image = load_image('player.png')
 
 player = Entity((50, 300))
-platform = Platform((40, 490))
+Platform((10, 490), 200)
+Platform((400, 490), 200)
+Platform((900, 490), 800)
 
 camera = Camera(player, 500)
 
