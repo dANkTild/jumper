@@ -28,14 +28,14 @@ def load_image(name, colorkey=None):
 
 
 class Camera:
-    def __init__(self, target, limit=500):
+    def __init__(self, target=None, limit=500):
         self.x = 0
         self.set_target(target, limit)
 
-    def apply(self, group):
+    def apply(self, group, k=1):
         for sprite in group:
             if sprite != self.target:
-                sprite.rect.x = sprite.start_pos[0] + self.x
+                sprite.rect.x = sprite.start_pos[0] + (self.x - sprite.camera_delta) * k - 2
 
     def set_target(self, target, limit):
         self.target = target
@@ -49,23 +49,28 @@ class Camera:
         self.target.rect.bottom = pos[1]
 
 
-class Background(pygame.sprite.Sprite):
+class Sprite(pygame.sprite.Sprite):
+    def __init__(self, pos, *groups):
+        super().__init__(*groups)
+        self.start_pos = pos
+        self.camera_delta = camera.x
+
+
+class Background(Sprite):
     def __init__(self, x):
-        super().__init__(backgrounds, all_sprites)
+        super().__init__((x, 0), backgrounds_group, all_sprites)
         self.image = background_image
         self.rect = self.image.get_rect()
         self.rect.left = x
-        self.start_pos = 0, 0
 
 
-class Entity(pygame.sprite.Sprite):
+class Entity(Sprite):
     def __init__(self, pos):
-        super().__init__(player_group, all_sprites)
+        super().__init__(pos, player_group, all_sprites)
         self.image = player_image
         self.rect = self.image.get_rect()
         self.rect.bottomleft = pos
         self.pos = list(pos)
-        self.start_pos = pos
         self.move_pos = list(pos)
 
         self.jump_faze = 0
@@ -74,7 +79,7 @@ class Entity(pygame.sprite.Sprite):
         self.push_faze = 0
         self.in_pushing = False
         self.push_speed = 500
-        self.push_dist = 50
+        self.push_dist = 80
         self.push_acc = self.push_speed ** 2 / (2 * self.push_dist) * -1
 
     def update(self, time, push=False):
@@ -100,32 +105,33 @@ class Entity(pygame.sprite.Sprite):
         camera.set_position(self.pos)
 
 
-class Platform(pygame.sprite.Sprite):
+class Platform(Sprite):
     def __init__(self, pos, width):
-        super().__init__(platforms_group, all_sprites)
+        super().__init__(pos, platforms_group, all_sprites)
         self.image = pygame.Surface((width, 50))
         pygame.draw.rect(self.image, "gray", (0, 0, width, 50))
         self.rect = self.image.get_rect()
         self.rect.topleft = pos
-        self.start_pos = pos
 
 
 all_sprites = pygame.sprite.Group()
-backgrounds = pygame.sprite.Group()
+backgrounds_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 platforms_group = pygame.sprite.Group()
 
 player_image = load_image('player.png')
 background_image = load_image("background.jpg")
 
-Background(0)
+camera = Camera()
+
+back = Background(0)
 player = Entity((50, 300))
 Platform((10, 390), 200)
 Platform((400, 390), 200)
 Platform((900, 390), 800)
 Platform((1800, 390), 800)
 
-camera = Camera(player, 500)
+camera.set_target(player, 600)
 
 timer = pygame.time.Clock()
 time = 0
@@ -139,17 +145,15 @@ while running:
                 player_group.update(time, True)
 
     screen.fill("black")
+    if back.rect.right < WIDTH:
+        back = Background(back.rect.right)
 
-    # back = backgrounds.sprites()[-1]
-    # print(back.rect.right)
-    # if back.rect.right < WIDTH:
-    #     Background(back.rect.right)
-
-    backgrounds.draw(screen)
+    backgrounds_group.draw(screen)
     platforms_group.draw(screen)
     player_group.draw(screen)
 
-    camera.apply(all_sprites)
+    camera.apply(platforms_group)
+    camera.apply(backgrounds_group, 0.3)
     player_group.update(time)
 
     time = timer.tick() / 1000
