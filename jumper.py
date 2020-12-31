@@ -1,6 +1,7 @@
 import pygame
 import sys
 import os
+from random import randrange
 
 FPS = 50
 GRAVITY = 200
@@ -55,6 +56,10 @@ class Sprite(pygame.sprite.Sprite):
         self.start_pos = pos
         self.camera_delta = camera.x
 
+    def update(self):
+        if self.rect.right < 0:
+            self.kill()
+
 
 class Background(Sprite):
     def __init__(self, x):
@@ -106,12 +111,12 @@ class Entity(Sprite):
 
 
 class Platform(Sprite):
-    def __init__(self, pos, width):
-        super().__init__(pos, platforms_group, all_sprites)
-        self.image = pygame.Surface((width, 50))
-        pygame.draw.rect(self.image, "gray", (0, 0, width, 50))
+    def __init__(self, x, height, length):
+        super().__init__((x, HEIGHT - height), platforms_group, all_sprites)
+        self.image = pygame.Surface((length, height))
+        pygame.draw.rect(self.image, "gray", (0, 0, length, height))
         self.rect = self.image.get_rect()
-        self.rect.topleft = pos
+        self.rect.bottomleft = (x, HEIGHT)
 
 
 all_sprites = pygame.sprite.Group()
@@ -124,12 +129,9 @@ background_image = load_image("background.jpg")
 
 camera = Camera()
 
-back = Background(0)
+last_background = Background(0)
+last_platform = Platform(30, 100, 500)
 player = Entity((50, 300))
-Platform((10, 390), 200)
-Platform((400, 390), 200)
-Platform((900, 390), 800)
-Platform((1800, 390), 800)
 
 camera.set_target(player, 600)
 
@@ -144,9 +146,15 @@ while running:
             if event.key == pygame.K_SPACE:
                 player_group.update(time, True)
 
-    screen.fill("black")
-    if back.rect.right < WIDTH:
-        back = Background(back.rect.right)
+    if last_background.rect.right < 2 * WIDTH:
+        last_background = Background(last_background.rect.right)
+
+    if last_platform.rect.right < 2 * WIDTH:
+        new_x = last_platform.rect.right + randrange(150, 300)
+        height = randrange(10, 75)
+        length = randrange(150, 500)
+
+        last_platform = Platform(new_x, height, length)
 
     backgrounds_group.draw(screen)
     platforms_group.draw(screen)
@@ -155,6 +163,8 @@ while running:
     camera.apply(platforms_group)
     camera.apply(backgrounds_group, 0.3)
     player_group.update(time)
+    backgrounds_group.update()
+    platforms_group.update()
 
     time = timer.tick() / 1000
     pygame.display.flip()
