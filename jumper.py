@@ -94,16 +94,22 @@ class Entity(Sprite):
             self.push_faze = 0
             self.in_pushing = True
             self.move_pos[0] = self.pos[0]
-        if self.in_pushing:
+
+        collider = pygame.sprite.spritecollideany(self, platforms_group)
+
+        if self.in_pushing and not collider:
             self.pos[0] = (self.move_pos[0] + self.push_speed * self.push_faze
                            + (self.push_acc * self.push_faze ** 2) / 2)
             if self.pos[0] - self.move_pos[0] >= self.push_dist - 1:
                 self.in_pushing = False
 
-        collider = pygame.sprite.spritecollideany(self, platforms_group)
         if collider:
-            self.jump_faze = 0
-            self.move_pos[1] = collider.rect.topleft[1]
+            if collider.rect.top + 5 > self.rect.bottom:
+                self.jump_faze = 0
+                self.move_pos[1] = collider.rect.topleft[1]
+            else:
+                self.push_speed *= -1
+
 
         self.pos[1] = (self.move_pos[1] + self.jump_speed * self.jump_faze +
                        (GRAVITY * self.jump_faze ** 2) / 2)
