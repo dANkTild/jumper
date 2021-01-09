@@ -79,12 +79,14 @@ class Sprite(pygame.sprite.Sprite):
                 self.image = pygame.transform.flip(
                     self.frames[self.anim_name][self.cur_frame],
                     self.flipped, 0)
+                new_pos = self.rect.midbottom
+                self.rect = self.image.get_rect()
+                self.rect.midbottom = new_pos
             else:
                 self.prev_name = self.anim_name
                 self.anim_name = None
 
     def cut_sheet(self, sheet, name, columns, rows):
-        self.anim_name = name
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
                                 sheet.get_height() // rows)
         for j in range(rows):
@@ -266,6 +268,33 @@ class Enemy(Sprite):
         self.death = True
 
 
+class Bomb(Sprite):
+    def __init__(self, pos):
+        super().__init__(pos, bombs_group, all_sprites)
+        self.cut_sheet(fire_sheet, "fire", 7, 1)
+        self.cut_sheet(boom_sheet, "boom", 6, 1)
+        self.image = self.frames["fire"][0]
+        self.rect = self.image.get_rect()
+        self.rect.bottom = pos[1]
+        self.radius = 150
+
+        self.player = None
+
+    def update(self, time):
+        super().update(time)
+        player = pygame.sprite.spritecollideany(self, player_group)
+        if player and not self.is_playing() and self.prev_name != "fire":
+            self.start_anim("fire", 0.3)
+        if not self.is_playing() and self.prev_name == "fire":
+            for entity in (enemies_group.sprites() +
+                           player_group.sprites()):
+                if pygame.sprite.collide_circle(self, entity):
+                    entity.kill()
+            self.start_anim("boom", 0.15)
+        if self.prev_name == "boom":
+            self.kill()
+
+
 class Platform(Sprite):
     def __init__(self, x, height, length):
         super().__init__((x, HEIGHT - height), platforms_group, all_sprites)
@@ -286,6 +315,7 @@ grass_group = pygame.sprite.Group()
 
 player_group = pygame.sprite.Group()
 enemies_group = pygame.sprite.Group()
+bombs_group = pygame.sprite.Group()
 platforms_group = pygame.sprite.Group()
 
 sky_image = load_image("sky.png")
@@ -300,6 +330,9 @@ player_die_sheet = load_image("player_die.png")
 enemy_jump_sheet = load_image("enemy_jump.png")
 enemy_landing_sheet = load_image("enemy_landing.png")
 enemy_die_sheet = load_image("enemy_die.png")
+fire_sheet = load_image("fire.png")
+boom_sheet = load_image("boom.png")
+
 
 camera = Camera()
 
@@ -310,7 +343,8 @@ last_fg = Background(fg_image, 0, fg_group)
 last_grass = Background(grass_image, 0, grass_group)
 
 last_platform = Platform(30, 100, 500)
-last_enemy = Enemy((400, 400), 250)
+last_enemy = Enemy((350, 400), 250)
+last_bomb = Bomb((300, 400))
 player = Player((50, 300), 300)
 
 camera.set_target(player, 600)
@@ -349,6 +383,9 @@ while running:
             jump_speed = randrange(200, 350)
             last_enemy = Enemy((enem_x, HEIGHT - height - last_enemy.rect.height), jump_speed)
 
+        if randrange(0, 101) < 20:
+            bomb_x = randrange(new_x, new_x + length - last_bomb.rect.width)
+            last_bomb = Bomb((bomb_x, HEIGHT - height))
 
     sky_group.draw(screen)
     bg_group.draw(screen)
@@ -356,6 +393,7 @@ while running:
     fg_group.draw(screen)
 
     platforms_group.draw(screen)
+    bombs_group.draw(screen)
     player_group.draw(screen)
     enemies_group.draw(screen)
 
@@ -369,11 +407,13 @@ while running:
 
     camera.apply(platforms_group)
     camera.apply(enemies_group)
+    camera.apply(bombs_group)
 
     all_backs_group.update(time)
 
     player_group.update(time)
     enemies_group.update(time)
+    bombs_group.update(time)
     platforms_group.update(time)
 
     time = timer.tick() / 1000
