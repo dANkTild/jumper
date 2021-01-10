@@ -3,7 +3,8 @@ import sys
 import os
 from random import randrange, getrandbits
 
-FPS = 50
+GOD_MODE = True
+
 GRAVITY = 300
 
 pygame.init()
@@ -105,6 +106,33 @@ class Sprite(pygame.sprite.Sprite):
         return bool(self.anim_name)
 
 
+class Text(Sprite):
+    def __init__(self, text, pos, size, color, font=None,
+                 bg_color=(0, 0, 0, 0), padding=5, align_left=True):
+        super().__init__(pos, texts_group, all_sprites)
+        self.pos = pos
+        self.color = color
+        self.bg_color = bg_color
+        self.padding = padding
+        self.align_left = align_left
+        self.font = pygame.font.Font(font, size)
+        self.set(text)
+
+    def set(self, text):
+        text_surf = self.font.render(str(text), 1, self.color)
+        w, h = text_surf.get_size()
+        background = pygame.Surface((w + self.padding * 2,
+                                     h + self.padding * 2),
+                                    pygame.SRCALPHA)
+        background.fill(self.bg_color)
+        background.blit(text_surf, (self.padding, self.padding))
+        self.image = background
+        self.rect = self.image.get_rect()
+        if self.align_left:
+            self.rect.topleft = self.pos
+        else:
+            self.rect.topright = self.pos
+
 class Background(Sprite):
     def __init__(self, image, x, group):
         super().__init__((x, 0), group, all_backs_group, all_sprites)
@@ -125,7 +153,8 @@ class Player(Sprite):
         self.pos = list(pos)
         self.move_pos = list(pos)
 
-        self.m = 1
+        self.level = 0
+        self.last_level = None
 
         self.push_phase = 0
         self.in_pushing = False
@@ -184,6 +213,14 @@ class Player(Sprite):
 
         camera.set_position(self.pos)
 
+        for platform in platforms_group.sprites():
+            proj = platform.rect.copy()
+            proj.y = 0
+            proj.height = HEIGHT
+            if self.rect.colliderect(proj) and hash(platform) != self.last_level:
+                self.level += 1
+                self.last_level = hash(platform)
+
         if self.death:
             if self.anim_name != "die" and self.prev_name != "die":
                 self.start_anim("die", 0.05)
@@ -194,7 +231,7 @@ class Player(Sprite):
                 super().kill()
 
     def kill(self):
-        self.death = True
+        self.death = True if not GOD_MODE else False
 
 
 class Enemy(Sprite):
@@ -313,6 +350,7 @@ middle_group = pygame.sprite.Group()
 fg_group = pygame.sprite.Group()
 grass_group = pygame.sprite.Group()
 
+texts_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 enemies_group = pygame.sprite.Group()
 bombs_group = pygame.sprite.Group()
@@ -349,7 +387,11 @@ player = Player((50, 300), 300)
 
 camera.set_target(player, 600)
 
+time_text = Text("0", (0, 0), 50, "blue", bg_color=(0, 0, 0, 190))
+level_text = Text("0", (WIDTH, 0), 50, "red", bg_color=(0, 0, 0, 190), align_left=False)
+
 timer = pygame.time.Clock()
+round_time = 0
 time = 0
 running = True
 while running:
@@ -361,13 +403,13 @@ while running:
                 player_group.update(time, True)
 
     if last_sky.rect.right < 2 * WIDTH:
-        last_sky = Background(sky_image, last_sky.rect.right, sky_group)
+        last_sky = Background(sky_image, last_sky.rect.right - 5, sky_group)
     if last_bg.rect.right < 2 * WIDTH:
-        last_bg = Background(bg_image, last_bg.rect.right, bg_group)
+        last_bg = Background(bg_image, last_bg.rect.right - 5, bg_group)
     if last_middle.rect.right < 2 * WIDTH:
-        last_middle = Background(middle_image, last_middle.rect.right, middle_group)
+        last_middle = Background(middle_image, last_middle.rect.right - 5, middle_group)
     if last_fg.rect.right < 2 * WIDTH:
-        last_fg = Background(fg_image, last_fg.rect.right, fg_group)
+        last_fg = Background(fg_image, last_fg.rect.right - 5, fg_group)
     if last_grass.rect.right < 2 * WIDTH:
         last_grass = Background(grass_image, last_grass.rect.right - 5, grass_group)
 
@@ -392,6 +434,7 @@ while running:
     middle_group.draw(screen)
     fg_group.draw(screen)
 
+    texts_group.draw(screen)
     platforms_group.draw(screen)
     bombs_group.draw(screen)
     player_group.draw(screen)
@@ -410,11 +453,15 @@ while running:
     camera.apply(bombs_group)
 
     all_backs_group.update(time)
-
+    
     player_group.update(time)
     enemies_group.update(time)
     bombs_group.update(time)
     platforms_group.update(time)
+    
+    level_text.set(player.level)
+    time_text.set("{:0.1f}".format(round_time))
 
     time = timer.tick() / 1000
+    round_time += time
     pygame.display.flip()
