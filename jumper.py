@@ -1,9 +1,9 @@
 import pygame
 import sys
 import os
-from random import randrange, getrandbits
+from random import randrange, getrandbits, uniform
 
-GOD_MODE = True
+GOD_MODE = False
 
 GRAVITY = 300
 
@@ -50,6 +50,12 @@ class Camera:
             self.target.rect.x = pos[0]
         self.target.rect.bottom = pos[1]
 
+    def move_from(self, x):
+        if self.target.pos[0] > self.limit:
+            self.x = -self.target.pos[0] + self.limit + x
+        else:
+            self.x = x
+
 
 class Sprite(pygame.sprite.Sprite):
     def __init__(self, pos, *groups, randflip=False):
@@ -69,7 +75,7 @@ class Sprite(pygame.sprite.Sprite):
         self.camera_delta = camera.x
 
     def update(self, time):
-        if self.rect.right < 0 or self.rect.top > HEIGHT:
+        if self.rect.right < -WIDTH or self.rect.top > HEIGHT:
             self.kill()
 
         self.anim_phase += time
@@ -132,6 +138,7 @@ class Text(Sprite):
             self.rect.topleft = self.pos
         else:
             self.rect.topright = self.pos
+
 
 class Background(Sprite):
     def __init__(self, image, x, group):
@@ -361,6 +368,7 @@ bg_image = load_image("bg.png")
 middle_image = load_image("middle.png")
 fg_image = load_image("fg.png")
 grass_image = load_image("grass.png")
+end_image = load_image("glitch.png")
 
 player_jump_sheet = load_image("player_jump.png")
 player_landing_sheet = load_image("player_landing.png")
@@ -370,7 +378,6 @@ enemy_landing_sheet = load_image("enemy_landing.png")
 enemy_die_sheet = load_image("enemy_die.png")
 fire_sheet = load_image("fire.png")
 boom_sheet = load_image("boom.png")
-
 
 camera = Camera()
 
@@ -387,11 +394,13 @@ player = Player((50, 300), 300)
 
 camera.set_target(player, 600)
 
-time_text = Text("0", (0, 0), 50, "blue", bg_color=(0, 0, 0, 190))
+time_text = Text("0", (0, 0), 50, "green", bg_color=(0, 0, 0, 190))
 level_text = Text("0", (WIDTH, 0), 50, "red", bg_color=(0, 0, 0, 190), align_left=False)
+game_over = False
+end_phase = 0
+round_time = 0
 
 timer = pygame.time.Clock()
-round_time = 0
 time = 0
 running = True
 while running:
@@ -400,7 +409,40 @@ while running:
             running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                player_group.update(time, True)
+                if not game_over:
+                    player_group.update(time, True)
+                else:
+                    sky_group.empty()
+                    bg_group.empty()
+                    middle_group.empty()
+                    fg_group.empty()
+                    grass_group.empty()
+                    all_backs_group.empty()
+                    platforms_group.empty()
+                    enemies_group.empty()
+                    bombs_group.empty()
+                    texts_group.empty()
+
+                    camera = Camera()
+
+                    last_sky = Background(sky_image, 0, sky_group)
+                    last_bg = Background(bg_image, 0, bg_group)
+                    last_middle = Background(middle_image, 0, middle_group)
+                    last_fg = Background(fg_image, 0, fg_group)
+                    last_grass = Background(grass_image, 0, grass_group)
+
+                    last_platform = Platform(30, 100, 500)
+                    last_enemy = Enemy((350, 400), 250)
+                    last_bomb = Bomb((300, 400))
+                    player = Player((50, 300), 300)
+
+                    camera.set_target(player, 600)
+
+                    time_text = Text("0", (0, 0), 50, "green", bg_color=(0, 0, 0, 190))
+                    level_text = Text("0", (WIDTH, 0), 50, "red", bg_color=(0, 0, 0, 190), align_left=False)
+                    game_over = False
+                    end_phase = 0
+                    round_time = 0
 
     if last_sky.rect.right < 2 * WIDTH:
         last_sky = Background(sky_image, last_sky.rect.right - 5, sky_group)
@@ -434,13 +476,28 @@ while running:
     middle_group.draw(screen)
     fg_group.draw(screen)
 
-    texts_group.draw(screen)
     platforms_group.draw(screen)
     bombs_group.draw(screen)
     player_group.draw(screen)
     enemies_group.draw(screen)
 
     grass_group.draw(screen)
+
+    if player not in player_group:
+        end_phase += time
+        if end_phase > uniform(0.1, 3.0):
+            end_phase = 0
+            camera.move_from(randrange(-20, 20))
+        if not game_over:
+            game_over = True
+            go_text = Text("GAME OVER", (0, 200), 100, "white",
+                           bg_color=(0, 0, 0, 220), padding=20)
+            Text("Press space to restart", (0, go_text.rect.bottom + 5),
+                 50, "white", bg_color=(0, 0, 0, 220), padding=10)
+
+        screen.blit(end_image, (0, 0))
+
+    texts_group.draw(screen)
 
     camera.apply(sky_group, 0.1)
     camera.apply(bg_group, 0.3)
@@ -460,8 +517,8 @@ while running:
     platforms_group.update(time)
     
     level_text.set(player.level)
-    time_text.set("{:0.1f}".format(round_time))
+    time_text.set(int(round_time))
 
     time = timer.tick() / 1000
-    round_time += time
+    round_time += time if not player.death else 0
     pygame.display.flip()
