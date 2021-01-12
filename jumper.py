@@ -76,7 +76,7 @@ class Sprite(pygame.sprite.Sprite):
 
     def update(self, time):
         if self.rect.right < -WIDTH or self.rect.top > HEIGHT:
-            self.kill()
+            self.destruct()
 
         self.anim_phase += time
         if self.anim_name and self.anim_phase > self.anim_delay:
@@ -110,6 +110,9 @@ class Sprite(pygame.sprite.Sprite):
 
     def is_playing(self):
         return bool(self.anim_name)
+
+    def destruct(self):
+        super().kill()
 
 
 class Text(Sprite):
@@ -175,7 +178,6 @@ class Player(Sprite):
 
         self.start_anim("jump", 0.15)
 
-
     def update(self, time, push=False):
         super().update(time)
         self.push_phase += time
@@ -184,23 +186,24 @@ class Player(Sprite):
             self.push_phase = 0
             self.in_pushing = True
             self.move_pos[0] = self.pos[0]
-
-        collider = pygame.sprite.spritecollideany(self, platforms_group)
+        platform = pygame.sprite.spritecollideany(self, platforms_group)
         enemy = pygame.sprite.spritecollideany(self, enemies_group)
-        if self.in_pushing and not collider:
+        if self.in_pushing and not platform:
             self.pos[0] = (self.move_pos[0] + self.push_speed * self.push_phase
                            + (self.push_acc * self.push_phase ** 2) / 2)
             if self.pos[0] - self.move_pos[0] >= self.push_dist - 1:
                 self.in_pushing = False
 
-        if collider:
-            if self.rect.bottom - collider.rect.top < 5:
+        if platform and pygame.sprite.collide_mask(self, platform):
+            if self.pos[1] - platform.rect.top <= 10:
                 self.is_jump = False
                 self.jump_phase = 0
-                self.move_pos[1] = collider.rect.topleft[1]
+                self.move_pos[1] = platform.rect.topleft[1]
                 if not self.is_playing() and self.prev_name != "landing":
                     self.start_anim("landing", 0.01)
                     self.is_jump = True
+            elif self.pos[0] + self.rect.width > platform.rect.right:
+                self.pos[0] += 2
             else:
                 self.in_pushing = False
 
@@ -267,12 +270,12 @@ class Enemy(Sprite):
         self.jump_phase += time
         self.push_phase += time
 
-        collider = pygame.sprite.spritecollideany(self, platforms_group)
-        if collider:
-            if self.rect.bottom - collider.rect.top < 5:
+        platform = pygame.sprite.spritecollideany(self, platforms_group)
+        if platform and pygame.sprite.collide_mask(self, platform):
+            if self.rect.bottom - platform.rect.top <= 10:
                 self.is_jump = False
                 self.jump_phase = 0
-                self.move_pos[1] = collider.rect.topleft[1]
+                self.move_pos[1] = platform.rect.topleft[1]
                 if not self.is_playing() and self.prev_name != "landing":
                     self.start_anim("landing", 0.01)
                     self.is_jump = True
@@ -285,16 +288,23 @@ class Enemy(Sprite):
                            (GRAVITY * self.jump_phase ** 2) / 2)
 
         player = pygame.sprite.spritecollideany(self, player_group)
-        enemy = pygame.sprite.spritecollideany(self, enemies_group)
-        if (player or enemy != self) and not self.death:
-            self.pos[0] += 5
-
         if not self.death and player and sum([bool(
                 self.rect.collidepoint(x, y))
             for x, y in (player.rect.topleft,
                          player.rect.midtop,
                          player.rect.topright)]) == 2:
             player.kill()
+
+        if not self.death:
+            enemy = pygame.sprite.spritecollideany(self, enemies_group)
+            if player and player.rect.x < self.pos[0]:
+                self.pos[0] += 3
+            elif player and player.rect.x > self.pos[0]:
+                self.pos[0] -= 3
+            if enemy and enemy != self and enemy.rect.x < self.pos[0]:
+                self.pos[0] += 3
+            elif enemy and enemy != self and enemy.rect.x > self.pos[0]:
+                self.pos[0] -= 3
 
         self.start_pos[0] = self.pos[0]
         self.rect.bottom = self.pos[1]
@@ -326,8 +336,8 @@ class Bomb(Sprite):
 
     def update(self, time):
         super().update(time)
-        player = pygame.sprite.spritecollideany(self, player_group)
-        if player and not self.is_playing() and self.prev_name != "fire":
+        player_collision = pygame.sprite.collide_mask(self, player)
+        if player_collision and not self.is_playing() and self.prev_name != "fire":
             self.start_anim("fire", 0.3)
         if not self.is_playing() and self.prev_name == "fire":
             for entity in (enemies_group.sprites() +
@@ -396,6 +406,7 @@ camera.set_target(player, 600)
 
 time_text = Text("0", (0, 0), 50, "green", bg_color=(0, 0, 0, 190))
 level_text = Text("0", (WIDTH, 0), 50, "red", bg_color=(0, 0, 0, 190), align_left=False)
+fps_text = Text("0", (WIDTH, 480), 20, "white", bg_color=(0, 0, 0, 255), align_left=False, padding=1)
 game_over = False
 end_phase = 0
 round_time = 0
@@ -412,16 +423,8 @@ while running:
                 if not game_over:
                     player_group.update(time, True)
                 else:
-                    sky_group.empty()
-                    bg_group.empty()
-                    middle_group.empty()
-                    fg_group.empty()
-                    grass_group.empty()
-                    all_backs_group.empty()
-                    platforms_group.empty()
-                    enemies_group.empty()
-                    bombs_group.empty()
-                    texts_group.empty()
+                    for sprite in all_sprites.sprites():
+                        sprite.destruct()
 
                     camera = Camera()
 
@@ -440,6 +443,8 @@ while running:
 
                     time_text = Text("0", (0, 0), 50, "green", bg_color=(0, 0, 0, 190))
                     level_text = Text("0", (WIDTH, 0), 50, "red", bg_color=(0, 0, 0, 190), align_left=False)
+                    fps_text = Text("0", (WIDTH, 480), 20, "white", bg_color=(0, 0, 0, 255), align_left=False,
+                                    padding=1)
                     game_over = False
                     end_phase = 0
                     round_time = 0
@@ -457,7 +462,7 @@ while running:
 
     if last_platform.rect.right < 2 * WIDTH:
         new_x = last_platform.rect.right + randrange(150, 300)
-        height = randrange(40, 95)
+        height = randrange(45, 110)
         length = randrange(150, 500)
 
         last_platform = Platform(new_x, height, length)
@@ -510,14 +515,15 @@ while running:
     camera.apply(bombs_group)
 
     all_backs_group.update(time)
-    
+
     player_group.update(time)
     enemies_group.update(time)
     bombs_group.update(time)
     platforms_group.update(time)
-    
+
     level_text.set(player.level)
     time_text.set(int(round_time))
+    fps_text.set(int(timer.get_fps()))
 
     time = timer.tick() / 1000
     round_time += time if not player.death else 0
