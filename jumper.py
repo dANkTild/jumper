@@ -3,6 +3,7 @@ import pygame_gui
 import sys
 import os
 import csv, json
+from datetime import datetime
 from random import randrange, getrandbits, uniform
 
 WIDTH, HEIGHT = 1000, 500
@@ -13,7 +14,7 @@ GAME_MUSIC_VOLUME = 0.25
 PAUSE_MUSIC_VOLUME = 0.2
 PLAYER_LANDING_VOLUME = 0.8
 PLAYER_PUSH_VOLUME = 0.4
-PLAYER_DIE_VOLUME = 1
+PLAYER_DIE_VOLUME = 1.5
 ENEMY_LANDING_VOLUME = 0.5
 ENEMY_DIE_VOLUME = 0.6
 BOOM_VOLUME = 0.4
@@ -351,7 +352,7 @@ class Enemy(Sprite):
                            player.rect.x > self.rect.left):
                 delta = self.rect.x - player.rect.x
                 self.pos[0] += delta / 4
-            if enemy and enemy != self and enemy.rect.x < self.rect.left:
+            if enemy and enemy != self:
                 self.pos[0] += 3
 
         self.start_pos[0] = self.pos[0]
@@ -471,6 +472,60 @@ class Start(Form):
                     self.is_visible = False
                     settings_form.prev_form = self
                     settings_form.is_visible = True
+                if event.ui_element == self.records_button:
+                    self.is_visible = False
+                    records_form.is_visible = True
+
+            self.manager.process_events(event)
+
+        self.manager.update(time_delta)
+
+        self.screen.blit(self.background, (0, 0))
+        self.manager.draw_ui(self.screen)
+
+        pygame.display.update()
+
+
+class Records(Form):
+    def __init__(self, screen):
+        super().__init__(screen)
+
+        self.manager = pygame_gui.UIManager((self.width, self.height))
+
+        self.background = menu_bg_image
+        self.text_rect = pygame.Rect((0, 0), (500, 200))
+        self.text_rect.center = self.width // 2, self.height // 2
+
+        self.exit_rect = pygame.Rect((0, 0), (250, 50))
+        self.exit_rect.topright = self.text_rect.bottomright
+        self.exit_rect.y += 5
+        self.exit_button = pygame_gui.elements.UIButton(relative_rect=self.exit_rect,
+                                                        text='ok',
+                                                        manager=self.manager)
+
+        if not os.path.isfile("records.csv"):
+            open("records.csv", "w+").write("time,round_time,score")
+
+
+    def main(self, events, timer):
+        time_delta = timer.tick() / 1000.0
+
+        header, *records = csv.reader(open("records.csv", newline=''))
+        text = "DATE & TIME  |  ROUND TIME  |  SCORE<br>"
+        for row in records:
+            text += "  |  ".join(row) + "<br>"
+
+        pygame_gui.elements.UITextBox(html_text=text,
+                                      relative_rect=self.text_rect,
+                                      manager=self.manager)
+
+        for event in events:
+            if event.type == pygame.USEREVENT:
+                pass
+                if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+                    if event.ui_element == self.exit_button:
+                        start_form.is_visible = True
+                        self.is_visible = False
 
             self.manager.process_events(event)
 
@@ -529,7 +584,11 @@ class Settings(Form):
                                                         manager=self.manager)
 
     def load_settings(self):
-        self.settings = json.loads(open("settings.json").read())
+        if not os.path.isfile("settings.json"):
+            open("settings.json", "w+").write('{"master_vol": 0.2, '
+                                              '"music_vol": 0.6, '
+                                              '"effects_vol": 0.3}')
+        self.settings = json.loads(open("settings.json", "r").read())
         self.set_volumes()
 
     def update_settings(self):
@@ -617,7 +676,7 @@ class Game(Form):
         self.player = None
 
         self.music = game_music
-        self.music.set_volume(GAME_MUSIC_VOLUME)
+        self.channel = None
 
     def restart_game(self):
         for sprite in self.all_sprites.sprites():
@@ -648,9 +707,10 @@ class Game(Form):
         self.on_pause = False
         self.end_phase = 0
         self.round_time = 0
+        self.record_writed = False
 
-        self.music.stop()
-        self.channel = self.music.play(-1)
+        if not self.channel:
+            self.channel = self.music.play(-1)
 
     def main(self, events, timer):
         time = timer.tick() / 1000.0
@@ -731,6 +791,19 @@ class Game(Form):
                 bomb_x = randrange(new_x, new_x + length - self.last_bomb.rect.width)
                 self.last_bomb = Bomb((bomb_x, self.height - height))
 
+        if self.player.death and not self.record_writed:
+            header, *records = csv.reader(open("records.csv", newline=''))
+            cur_time = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+            score = self.player.level
+            records.append([cur_time, int(self.round_time), score])
+            records.sort(key=lambda x: (-int(x[2]), int(float(x[1])), x[0]))
+            writer = csv.writer(open("records.csv", "w", newline=''))
+            writer.writerow(header)
+            for row in records[:min(5, len(records))]:
+                writer.writerow(row)
+            self.record_writed = True
+            pygame_gui.elements.UITextBox
+
         self.camera.apply(self.sky_group, 0.1)
         self.camera.apply(self.bg_group, 0.3)
         self.camera.apply(self.middle_group, 0.5)
@@ -790,6 +863,7 @@ class Pause(Form):
 
     def main(self, events, timer):
         time_delta = timer.tick() / 1000.0
+        game.is_visible = True
 
         if not self.channel:
             self.channel = self.music.play(-1)
@@ -807,6 +881,7 @@ class Pause(Form):
                     game.on_pause = False
                 if event.ui_element == self.settings_button:
                     self.is_visible = False
+                    game.is_visible = False
                     settings_form.prev_form = self
                     settings_form.is_visible = True
 
@@ -823,6 +898,7 @@ class Pause(Form):
 pygame.init()
 pygame.mixer.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Jumper")
 timer = pygame.time.Clock()
 
 menu_bg_image = load_image("menu_bg.jpg", (WIDTH, HEIGHT))
@@ -854,6 +930,7 @@ enemy_die_sound = load_sound("enemy_die.wav")
 
 if __name__ == '__main__':
     start_form = Start(screen)
+    records_form = Records(screen)
     game = Game(screen)
     pause = Pause(screen)
     settings_form = Settings(screen)
@@ -867,6 +944,8 @@ if __name__ == '__main__':
 
         if settings_form.is_visible:
             settings_form.main(events, timer)
+        if records_form.is_visible:
+            records_form.main(events, timer)
         if start_form.is_visible:
             start_form.main(events, timer)
         if game.is_visible:
