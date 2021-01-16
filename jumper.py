@@ -714,6 +714,7 @@ class Game(Form):
 
     def main(self, events, timer):
         time = timer.tick() / 1000.0
+        settings_form.set_volumes()
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
